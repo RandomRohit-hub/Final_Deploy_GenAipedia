@@ -1,108 +1,113 @@
 import streamlit as st
-from dotenv import load_dotenv
 import os
 
 # -------------------- RAG Imports --------------------
-from pinecone import Pinecone
+from pinecone import Pinecone  # NEW SDK
 from langchain_pinecone import PineconeVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 
-# -------------------- Load .env --------------------
-load_dotenv()
 
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API")
+# -------------------- Load Secrets --------------------
+# Use Streamlit secrets for deployed app, fallback to env for local
+PINECONE_API_KEY = st.secrets.get("PINECONE_API_KEY", os.getenv("PINECONE_API_KEY"))
+GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
 
 if not PINECONE_API_KEY:
-    st.error("❌ Missing PINECONE_API_KEY in environment")
+    st.error("❌ Missing PINECONE_API_KEY in Streamlit secrets")
+    st.stop()
 if not GROQ_API_KEY:
-    st.error("❌ Missing GROQ_API in environment")
+    st.error("❌ Missing GROQ_API_KEY in Streamlit secrets")
+    st.stop()
 
-
-# -------------------- Pinecone Initialization --------------------
+# Initialize Pinecone with new SDK
 pc = Pinecone(api_key=PINECONE_API_KEY)
-
-index_name = "genativeai-encyclopedia"
-namespace = ""   # change if you used a namespace when inserting vectors
-
-# Check index exists
-if index_name not in pc.list_indexes().names():
-    st.error(f"❌ Pinecone index '{index_name}' does not exist!")
-else:
-    st.success(f"Connected to Pinecone index: {index_name}")
 
 
 # -------------------- Streamlit UI --------------------
 st.set_page_config(page_title="GenAiPedia Chatbot", layout="wide")
 st.title("🤖 GenAiPedia — AI Knowledge Chatbot")
-st.markdown("Ask any question related to AI/ML. Answers are grounded in your Pinecone vector DB.")
+st.markdown("Ask any question related to AI/ML — grounded in your Pinecone Vector DB.")
 
 
-# -------------------- Embeddings --------------------
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2",
-    model_kwargs={"device": "cpu"}
-)
-
-
-# -------------------- Vector Store --------------------
-db = PineconeVectorStore.from_existing_index(
-    index_name=index_name,
-    embedding=embeddings,
-    namespace=namespace
-)
-
-retriever = db.as_retriever(search_kwargs={"k": 10})
-
-
-# -------------------- Groq LLM --------------------
-llm = ChatGroq(
-    model="llama-3.1-8b-instant",
-    temperature=0,
-    api_key=GROQ_API_KEY
-)
-
-
-# -------------------- Prompt Template --------------------
-system_prompt = """
-You are a helpful and knowledgeable AI assistant. 
-Use ONLY the context provided below to answer the question.
-If the answer is not in the context, say: "I don't know."
+# -------------------- Initialize Components --------------------
+@st.cache_resource
+def initialize_rag():
+    """Cache the RAG components to avoid reinitializing on every rerun"""
+    index_name = "genativeai-encyclopedia"
+    
+    # Initialize embeddings
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_kwargs={"device": "cpu"}
+    )
+    
+    # Load Pinecone index
+    db = PineconeVectorStore.from_existing_index(
+        index_name=index_name,
+        embedding=embeddings
+    )
+    
+    retriever = db.as_retriever(search_kwargs={"k": 10})
+    
+    # Initialize LLM
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant",
+        temperature=0,
+        api_key=GROQ_API_KEY
+    )
+    
+    # Create prompt template
+    system_prompt = """
+You are a helpful AI assistant. Use ONLY the provided context to answer.
+If the answer cannot be found in the context, say: "I don't know."
 
 Context:
 {context}
 """
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{input}")
+    ])
+    
+    # Build RAG chain
+    stuff_chain = create_stuff_documents_chain(llm, prompt)
+    rag_chain = create_retrieval_chain(retriever, stuff_chain)
+    
+    return rag_chain
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", system_prompt),
-    ("human", "{input}")
-])
 
-
-# -------------------- Build RAG Chain --------------------
-stuff_chain = create_stuff_documents_chain(llm, prompt)
-rag_chain = create_retrieval_chain(retriever, stuff_chain)
+# Initialize RAG chain
+try:
+    rag_chain = initialize_rag()
+except Exception as e:
+    st.error(f"❌ Failed to initialize RAG chain: {str(e)}")
+    st.stop()
 
 
 # -------------------- Chat Input --------------------
-user_input = st.text_input("Enter your question:")
+user_input = st.text_input("Enter your question:", key="user_question")
 
 if user_input:
     with st.spinner("Generating answer..."):
-        result = rag_chain.invoke({"input": user_input})
-        answer = result.get("answer", "I don't know.")
-
-    st.subheader("📘 Answer")
-    st.write(answer)
-
-    # Show retrieved context chunks
-    with st.expander("🔍 Retrieved Knowledge Chunks"):
-        for i, doc in enumerate(result.get("context", []), start=1):
-            st.markdown(f"### Chunk {i}")
-            st.write(doc.page_content)
-            st.caption(f"Source: {doc.metadata.get('source')}")
+        try:
+            result = rag_chain.invoke({"input": user_input})
+            answer = result.get("answer", "I don't know.")
+            
+            st.subheader("📘 Answer")
+            st.write(answer)
+            
+            # Debug / Retrieved context
+            with st.expander("🔍 Retrieved Knowledge Chunks"):
+                for i, doc in enumerate(result.get("context", []), 1):
+                    st.markdown(f"### Chunk {i}")
+                    st.write(doc.page_content)
+                    st.caption(f"Source: {doc.metadata.get('source', 'Unknown')}")
+        
+        except Exception as e:
+            st.error(f"❌ Error generating answer: {str(e)}")
