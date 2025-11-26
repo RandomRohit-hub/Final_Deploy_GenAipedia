@@ -50,7 +50,10 @@ def initialize_embeddings():
 @st.cache_resource
 def initialize_rag():
     try:
-        # Initialize Pinecone client
+        # Set Pinecone API key as environment variable for langchain-community
+        os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
+        
+        # Initialize Pinecone client for verification
         pc = Pinecone(api_key=PINECONE_API_KEY)
         index_name = "genativeai-encyclopedia"
         
@@ -66,7 +69,7 @@ def initialize_rag():
         embeddings = initialize_embeddings()
         
         # Create vector store directly from existing index
-        # Pass index_name as string, not the index object
+        # This method uses the API key from environment variable
         vectorstore = LangchainPinecone.from_existing_index(
             index_name=index_name,
             embedding=embeddings,
