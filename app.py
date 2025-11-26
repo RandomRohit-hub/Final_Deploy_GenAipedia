@@ -2,12 +2,12 @@ import streamlit as st
 import os
 
 # -------------------- RAG Imports --------------------
-from pinecone import Pinecone  # NEW SDK
-from langchain_community.vectorstores import Pinecone as PineconeVectorStore
+from pinecone import Pinecone
+from langchain_community.vectorstores import Pinecone as LangchainPinecone
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 
@@ -49,8 +49,8 @@ def initialize_rag():
     # Get Pinecone index
     index = pc.Index(index_name)
     
-    # Load Pinecone vector store
-    db = PineconeVectorStore(
+    # Load Pinecone vector store using langchain_community
+    db = LangchainPinecone(
         index=index,
         embedding=embeddings,
         text_key="text"
