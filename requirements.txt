@@ -1,23 +1,13 @@
-streamlit
-python-dotenv
-
-# LangChain
-langchain
-langchain-core
-langchain-community
-langchain-pinecone
-langchain-huggingface
-langchain-groq
-
-# Pinecone (new official SDK)
-pinecone
-
-# Embeddings
-sentence-transformers
-torch
-
-# Groq LLM API
-groq
-
-requests
-tqdm
+streamlit==1.32.0
+pinecone-client==3.2.2
+langchain==0.1.20
+langchain-pinecone==0.1.0
+langchain-huggingface==0.0.3
+langchain-groq==0.1.3
+sentence-transformers==2.6.1
+torch==2.1.2
+transformers==4.37.2
+huggingface-hub==0.20.3
+tokenizers==0.15.2
+safetensors==0.4.2
+numpy<2.0.0
