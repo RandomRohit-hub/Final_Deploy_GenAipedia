@@ -1,19 +1,15 @@
 import streamlit as st
 import os
-
-# -------------------- RAG Imports --------------------
-from pinecone import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 from langchain_community.vectorstores import Pinecone as LangchainPinecone
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
 
 # -------------------- Load Secrets --------------------
-# Use Streamlit secrets for deployed app, fallback to env for local
 PINECONE_API_KEY = st.secrets.get("PINECONE_API_KEY", os.getenv("PINECONE_API_KEY"))
 GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
 
@@ -24,9 +20,6 @@ if not GROQ_API_KEY:
     st.error("❌ Missing GROQ_API_KEY in Streamlit secrets")
     st.stop()
 
-# Initialize Pinecone with new SDK
-pc = Pinecone(api_key=PINECONE_API_KEY)
-
 
 # -------------------- Streamlit UI --------------------
 st.set_page_config(page_title="GenAiPedia Chatbot", layout="wide")
@@ -36,26 +29,48 @@ st.markdown("Ask any question related to AI/ML — grounded in your Pinecone Vec
 
 # -------------------- Initialize Components --------------------
 @st.cache_resource
-def initialize_rag():
-    """Cache the RAG components to avoid reinitializing on every rerun"""
-    index_name = "genativeai-encyclopedia"
-    
-    # Initialize embeddings
-    embeddings = HuggingFaceEmbeddings(
+def initialize_embeddings():
+    """Initialize and cache embeddings model"""
+    return HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2",
         model_kwargs={"device": "cpu"}
     )
-    
-    # Connect to Pinecone index using the client
-    # The Index is accessed directly from the Pinecone client instance
+
+
+@st.cache_resource
+def get_pinecone_index():
+    """Initialize Pinecone and get index"""
     try:
+        # Initialize Pinecone client
+        pc = Pinecone(api_key=PINECONE_API_KEY)
+        
+        # List available indexes for debugging
+        indexes = pc.list_indexes()
+        st.sidebar.info(f"📊 Available indexes: {[idx.name for idx in indexes]}")
+        
+        # Index name
+        index_name = "genativeai-encyclopedia"
+        
+        # Get the index
         index = pc.Index(index_name)
+        
+        return index
     except Exception as e:
-        st.error(f"Error connecting to Pinecone index: {str(e)}")
-        st.info(f"Available indexes: {pc.list_indexes().names()}")
+        st.error(f"Pinecone Error: {str(e)}")
         raise
+
+
+@st.cache_resource
+def initialize_rag():
+    """Cache the RAG components to avoid reinitializing on every rerun"""
     
-    # Load Pinecone vector store using langchain_community
+    # Get embeddings
+    embeddings = initialize_embeddings()
+    
+    # Get Pinecone index
+    index = get_pinecone_index()
+    
+    # Create vector store
     vectorstore = LangchainPinecone(
         index=index,
         embedding=embeddings,
@@ -84,7 +99,7 @@ Answer:"""
     
     prompt = ChatPromptTemplate.from_template(template)
     
-    # Build RAG chain using LCEL (LangChain Expression Language)
+    # Build RAG chain using LCEL
     def format_docs(docs):
         return "\n\n".join(doc.page_content for doc in docs)
     
@@ -98,35 +113,79 @@ Answer:"""
     return rag_chain, retriever
 
 
-# Initialize RAG chain
+# -------------------- Initialize App --------------------
 try:
-    rag_chain, retriever = initialize_rag()
+    with st.spinner("🔄 Initializing AI models..."):
+        rag_chain, retriever = initialize_rag()
+    st.success("✅ Ready to answer your questions!")
 except Exception as e:
-    st.error(f"❌ Failed to initialize RAG chain: {str(e)}")
+    st.error(f"❌ Failed to initialize: {str(e)}")
+    st.info("💡 **Troubleshooting:**")
+    st.info("1. Check if your Pinecone API key is correct")
+    st.info("2. Verify index name is 'genativeai-encyclopedia'")
+    st.info("3. Ensure your Pinecone index exists and is active")
     st.stop()
 
 
-# -------------------- Chat Input --------------------
-user_input = st.text_input("Enter your question:", key="user_question")
+# -------------------- Chat Interface --------------------
+st.markdown("---")
+
+# Create columns for better layout
+col1, col2 = st.columns([3, 1])
+
+with col1:
+    user_input = st.text_input("🔍 Enter your question:", placeholder="e.g., What is machine learning?", key="user_question")
+
+with col2:
+    clear_btn = st.button("🗑️ Clear", use_container_width=True)
+    if clear_btn:
+        st.rerun()
 
 if user_input:
-    with st.spinner("Generating answer..."):
+    with st.spinner("🤔 Thinking..."):
         try:
-            # Get answer from RAG chain
+            # Get answer
             answer = rag_chain.invoke(user_input)
             
-            st.subheader("📘 Answer")
-            st.write(answer)
+            # Display answer
+            st.markdown("### 📘 Answer")
+            st.markdown(answer)
             
-            # Get retrieved documents for display
+            # Get and display source documents
             docs = retriever.get_relevant_documents(user_input)
             
-            # Debug / Retrieved context
-            with st.expander("🔍 Retrieved Knowledge Chunks"):
+            st.markdown("---")
+            with st.expander(f"🔍 View {len(docs)} Retrieved Knowledge Chunks"):
                 for i, doc in enumerate(docs, 1):
-                    st.markdown(f"### Chunk {i}")
-                    st.write(doc.page_content)
-                    st.caption(f"Source: {doc.metadata.get('source', 'Unknown')}")
+                    st.markdown(f"**📄 Chunk {i}**")
+                    st.text_area(
+                        label=f"Content {i}",
+                        value=doc.page_content,
+                        height=150,
+                        key=f"doc_{i}",
+                        label_visibility="collapsed"
+                    )
+                    if doc.metadata:
+                        st.caption(f"📎 Metadata: {doc.metadata}")
+                    st.markdown("---")
         
         except Exception as e:
-            st.error(f"❌ Error generating answer: {str(e)}")
+            st.error(f"❌ Error: {str(e)}")
+            st.info("Please try rephrasing your question or contact support.")
+
+
+# -------------------- Sidebar Info --------------------
+with st.sidebar:
+    st.markdown("## ℹ️ About")
+    st.markdown("""
+    This chatbot uses:
+    - **Pinecone** for vector storage
+    - **HuggingFace** embeddings
+    - **Groq LLM** (Llama 3.1)
+    - **LangChain** for RAG pipeline
+    """)
+    
+    st.markdown("---")
+    st.markdown("## 🛠️ Status")
+    st.success("✅ System Online")
+    st.info(f"🔢 Retrieving top 10 chunks per query")
