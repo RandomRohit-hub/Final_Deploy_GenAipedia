@@ -8,7 +8,7 @@ from langchain_pinecone import PineconeVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 
@@ -23,22 +23,25 @@ if not PINECONE_API_KEY:
 if not GROQ_API_KEY:
     st.error("❌ Missing GROQ_API in environment")
 
-# -------------------- Pinecone Initialization (NEW SDK) --------------------
+
+# -------------------- Pinecone Initialization --------------------
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
-index_name = "genativeai-encyclopedia"   # your index name
-namespace = ""                            # change if you used a namespace
+index_name = "genativeai-encyclopedia"
+namespace = ""   # change if you used a namespace when inserting vectors
 
-# Check if index exists
+# Check index exists
 if index_name not in pc.list_indexes().names():
     st.error(f"❌ Pinecone index '{index_name}' does not exist!")
 else:
     st.success(f"Connected to Pinecone index: {index_name}")
 
+
 # -------------------- Streamlit UI --------------------
 st.set_page_config(page_title="GenAiPedia Chatbot", layout="wide")
 st.title("🤖 GenAiPedia — AI Knowledge Chatbot")
-st.markdown("Ask anything related to AI/ML — powered by your Pinecone Vector DB.")
+st.markdown("Ask any question related to AI/ML. Answers are grounded in your Pinecone vector DB.")
+
 
 # -------------------- Embeddings --------------------
 embeddings = HuggingFaceEmbeddings(
@@ -46,7 +49,8 @@ embeddings = HuggingFaceEmbeddings(
     model_kwargs={"device": "cpu"}
 )
 
-# -------------------- Vector Store (Load Existing Index) --------------------
+
+# -------------------- Vector Store --------------------
 db = PineconeVectorStore.from_existing_index(
     index_name=index_name,
     embedding=embeddings,
@@ -55,16 +59,19 @@ db = PineconeVectorStore.from_existing_index(
 
 retriever = db.as_retriever(search_kwargs={"k": 10})
 
-# -------------------- Groq Model --------------------
+
+# -------------------- Groq LLM --------------------
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
     temperature=0,
     api_key=GROQ_API_KEY
 )
 
+
 # -------------------- Prompt Template --------------------
 system_prompt = """
-You are a helpful AI assistant. Use ONLY the provided context to answer.
+You are a helpful and knowledgeable AI assistant. 
+Use ONLY the context provided below to answer the question.
 If the answer is not in the context, say: "I don't know."
 
 Context:
@@ -76,9 +83,11 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{input}")
 ])
 
+
 # -------------------- Build RAG Chain --------------------
 stuff_chain = create_stuff_documents_chain(llm, prompt)
 rag_chain = create_retrieval_chain(retriever, stuff_chain)
+
 
 # -------------------- Chat Input --------------------
 user_input = st.text_input("Enter your question:")
@@ -91,9 +100,9 @@ if user_input:
     st.subheader("📘 Answer")
     st.write(answer)
 
-    # Debug / Retrieved context
+    # Show retrieved context chunks
     with st.expander("🔍 Retrieved Knowledge Chunks"):
-        for i, doc in enumerate(result.get("context", []), 1):
+        for i, doc in enumerate(result.get("context", []), start=1):
             st.markdown(f"### Chunk {i}")
             st.write(doc.page_content)
             st.caption(f"Source: {doc.metadata.get('source')}")
