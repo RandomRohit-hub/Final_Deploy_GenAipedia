@@ -1,17 +1,24 @@
 streamlit
 python-dotenv
 
-# NEW Pinecone SDK (required)
-pinecone>=3.0.0
-
-# LangChain new API
-langchain>=0.3.0
-langchain-core>=0.3.0
+# LangChain ecosystem (latest stable 2024+)
+langchain
+langchain-core
 langchain-community
 langchain-pinecone
 langchain-huggingface
 langchain-groq
 
+# Pinecone new SDK
+pinecone-client
+
+# Embeddings
 sentence-transformers
 torch
-PyMuPDF
+
+# Groq LLM API
+groq
+
+# Utilities
+tqdm
+requests
