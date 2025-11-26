@@ -4,7 +4,7 @@ import os
 # Pinecone
 from pinecone import Pinecone
 
-# LangChain vectorstore (correct import for 0.1.x)
+# LangChain vectorstore
 from langchain_community.vectorstores import Pinecone as LangchainPinecone
 
 # Embeddings
@@ -46,49 +46,44 @@ def initialize_embeddings():
     )
 
 
-# -------------------- Pinecone Index --------------------
-@st.cache_resource
-def get_pinecone_index():
-    try:
-        pc = Pinecone(api_key=PINECONE_API_KEY)
-        index_name = "genativeai-encyclopedia"
-
-        # Debug sidebar
-        st.sidebar.success("🔌 Pinecone Connected")
-        st.sidebar.write("📊 Available Indexes:", [idx.name for idx in pc.list_indexes()])
-
-        return pc.Index(index_name)
-
-    except Exception as e:
-        st.error(f"❌ Pinecone Error: {str(e)}")
-        st.stop()
-
-
 # -------------------- Build RAG Pipeline --------------------
 @st.cache_resource
 def initialize_rag():
-
-    embeddings = initialize_embeddings()
-    index = get_pinecone_index()
-
-    # LangChain Vector Store
-    vectorstore = LangchainPinecone(
-        index=index,
-        embedding=embeddings,
-        text_key="text"
-    )
-
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
-
-    # Groq LLM
-    llm = ChatGroq(
-        model="llama-3.1-8b-instant",
-        temperature=0,
-        api_key=GROQ_API_KEY
-    )
-
-    template = """
-You are a helpful AI assistant. Use ONLY the provided context to answer.
+    try:
+        # Initialize Pinecone client
+        pc = Pinecone(api_key=PINECONE_API_KEY)
+        index_name = "genativeai-encyclopedia"
+        
+        # Debug info
+        st.sidebar.success("🔌 Pinecone Connected")
+        try:
+            indexes = pc.list_indexes()
+            st.sidebar.write("📊 Available Indexes:", [idx.name for idx in indexes])
+        except:
+            pass
+        
+        # Initialize embeddings
+        embeddings = initialize_embeddings()
+        
+        # Create vector store directly from existing index
+        # Pass index_name as string, not the index object
+        vectorstore = LangchainPinecone.from_existing_index(
+            index_name=index_name,
+            embedding=embeddings,
+            text_key="text",
+            namespace=""  # Use default namespace or specify yours
+        )
+        
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
+        
+        # Groq LLM
+        llm = ChatGroq(
+            model="llama-3.1-8b-instant",
+            temperature=0,
+            api_key=GROQ_API_KEY
+        )
+        
+        template = """You are a helpful AI assistant. Use ONLY the provided context to answer.
 If the answer is not in the context, say: "I don't know."
 
 Context:
@@ -96,21 +91,27 @@ Context:
 
 Question: {question}
 
-Answer:
-"""
-    prompt = ChatPromptTemplate.from_template(template)
-
-    def combine_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
-
-    rag_chain = (
-        {"context": retriever | combine_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-
-    return rag_chain, retriever
+Answer:"""
+        
+        prompt = ChatPromptTemplate.from_template(template)
+        
+        def combine_docs(docs):
+            return "\n\n".join(doc.page_content for doc in docs)
+        
+        rag_chain = (
+            {"context": retriever | combine_docs, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
+        
+        return rag_chain, retriever
+        
+    except Exception as e:
+        st.error(f"❌ Initialization Error: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+        st.stop()
 
 
 # -------------------- Initialize System --------------------
@@ -140,23 +141,25 @@ if user_input:
     with st.spinner("🤔 Thinking..."):
         try:
             answer = rag_chain.invoke(user_input)
-
+            
             st.markdown("### 📘 Answer")
             st.write(answer)
-
+            
             docs = retriever.get_relevant_documents(user_input)
-
+            
             st.markdown("---")
             with st.expander(f"🔍 View {len(docs)} Retrieved Knowledge Chunks"):
                 for i, doc in enumerate(docs, 1):
                     st.markdown(f"### 📄 Chunk {i}")
-                    st.text_area("", doc.page_content, height=150)
+                    st.text_area("", doc.page_content, height=150, key=f"doc_{i}")
                     if doc.metadata:
                         st.caption(f"📎 Metadata: {doc.metadata}")
                     st.markdown("---")
-
+        
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
 
 
 # -------------------- Sidebar Info --------------------
@@ -168,7 +171,7 @@ with st.sidebar:
     - LangChain RAG pipeline  
     - Groq Llama-3.1  
     """)
-
+    
     st.markdown("---")
     st.success("🟢 Online")
     st.info("Retrieving top 10 chunks per query")
