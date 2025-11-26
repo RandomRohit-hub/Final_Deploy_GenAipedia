@@ -1,18 +1,20 @@
 streamlit
 python-dotenv
 
-# Pinecone (compatible with langchain-pinecone)
-pinecone-client<3.0.0
-langchain-pinecone
 
-# LangChain packages
+pinecone>=2.2.4,<8.0.0
+
+# LangChain ecosystem
 langchain
 langchain-core
 langchain-community
+langchain-pinecone
 langchain-huggingface
 langchain-groq
 
-# Embeddings
+# Embeddings + HuggingFace
 sentence-transformers
 torch
+
+# PDF (optional if you use PDFs)
 PyMuPDF
