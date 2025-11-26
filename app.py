@@ -1,6 +1,13 @@
 import streamlit as st
 import os
-from pinecone import Pinecone, ServerlessSpec
+
+# Try different Pinecone import methods
+try:
+    from pinecone import Pinecone, ServerlessSpec, Index as PineconeIndex
+except ImportError:
+    from pinecone import Pinecone, ServerlessSpec
+    PineconeIndex = None
+
 from langchain_community.vectorstores import Pinecone as LangchainPinecone
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
@@ -45,18 +52,34 @@ def get_pinecone_index():
         pc = Pinecone(api_key=PINECONE_API_KEY)
         
         # List available indexes for debugging
-        indexes = pc.list_indexes()
-        st.sidebar.info(f"📊 Available indexes: {[idx.name for idx in indexes]}")
+        try:
+            indexes = pc.list_indexes()
+            index_names = [idx.name for idx in indexes]
+            st.sidebar.info(f"📊 Available indexes: {index_names}")
+        except:
+            st.sidebar.warning("Could not list indexes")
         
         # Index name
         index_name = "genativeai-encyclopedia"
         
-        # Get the index
-        index = pc.Index(index_name)
+        # Different methods to access index based on SDK version
+        try:
+            # Method 1: New SDK (3.x+)
+            from pinecone import Index
+            index = Index(index_name, api_key=PINECONE_API_KEY)
+        except:
+            try:
+                # Method 2: Via Pinecone client
+                index = pc.Index(index_name)
+            except:
+                # Method 3: Get index info first
+                index_info = pc.describe_index(index_name)
+                index = pc.Index(name=index_name, host=index_info.host)
         
         return index
     except Exception as e:
         st.error(f"Pinecone Error: {str(e)}")
+        st.code(f"Pinecone module contents: {dir(pc)}")
         raise
 
 
