@@ -3,44 +3,46 @@ from dotenv import load_dotenv
 import os
 
 # -------------------- RAG Imports --------------------
-import pinecone  # OLD SDK (compatible with langchain-pinecone)
+import pinecone  # old SDK (compatible with langchain-pinecone)
 from langchain_pinecone import PineconeVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 
-from langchain.prompts import ChatPromptTemplate
+# LangChain Core Imports (new versions)
+from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 
 
-# -------------------- Load .env --------------------
+# -------------------- Load Environment Variables --------------------
 load_dotenv()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API")
 
 if not PINECONE_API_KEY:
-    st.error("❌ Missing PINECONE_API_KEY in environment")
+    st.error("❌ Missing PINECONE_API_KEY in .env")
 if not GROQ_API_KEY:
-    st.error("❌ Missing GROQ_API in environment")
+    st.error("❌ Missing GROQ_API in .env")
 
+# Initialize Pinecone (old SDK)
 pinecone.init(api_key=PINECONE_API_KEY)
 
 
 # -------------------- Streamlit UI --------------------
 st.set_page_config(page_title="GenAiPedia Chatbot", layout="wide")
 st.title("🤖 GenAiPedia — AI Knowledge Chatbot")
-st.markdown("Ask any question related to AI/ML — grounded in your Pinecone Vector DB.")
+st.markdown("Welcome! Ask any question related to AI/ML — the answer comes from your Pinecone Vector Database.")
 
 
-# -------------------- Initialize Pinecone Vector Store --------------------
+# -------------------- Pinecone + Embeddings --------------------
 index_name = "genativeai-encyclopedia"
 
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2",
-    model_kwargs={"device": "cpu"}
+    model_kwargs={"device": "cpu"}   # CPU compatible for Render
 )
 
-# Load your existing Pinecone index
+# Load existing Pinecone index
 db = PineconeVectorStore.from_existing_index(
     index_name=index_name,
     embedding=embeddings
@@ -49,11 +51,11 @@ db = PineconeVectorStore.from_existing_index(
 retriever = db.as_retriever(search_kwargs={"k": 10})
 
 
-# -------------------- Groq Model --------------------
+# -------------------- Groq LLM --------------------
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
-    temperature=0,
-    api_key=GROQ_API_KEY
+    api_key=GROQ_API_KEY,
+    temperature=0
 )
 
 
@@ -77,7 +79,7 @@ stuff_chain = create_stuff_documents_chain(llm, prompt)
 rag_chain = create_retrieval_chain(retriever, stuff_chain)
 
 
-# -------------------- Chat Input --------------------
+# -------------------- Streamlit Chat Input --------------------
 user_input = st.text_input("Enter your question:")
 
 if user_input:
@@ -88,9 +90,9 @@ if user_input:
     st.subheader("📘 Answer")
     st.write(answer)
 
-    # Debug / Retrieved context
-    with st.expander("🔍 Retrieved Knowledge Chunks"):
-        for i, doc in enumerate(result.get("context", []), 1):
+    # Debug retrieved chunks
+    with st.expander("🔍 Retrieved Context"):
+        for i, doc in enumerate(result.get("context", []), start=1):
             st.markdown(f"### Chunk {i}")
             st.write(doc.page_content)
             st.caption(f"Source: {doc.metadata.get('source')}")
