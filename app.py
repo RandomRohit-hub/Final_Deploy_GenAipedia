@@ -8,8 +8,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 
 
 # -------------------- Load Secrets --------------------
@@ -50,13 +50,13 @@ def initialize_rag():
     index = pc.Index(index_name)
     
     # Load Pinecone vector store using langchain_community
-    db = LangchainPinecone(
+    vectorstore = LangchainPinecone(
         index=index,
         embedding=embeddings,
         text_key="text"
     )
     
-    retriever = db.as_retriever(search_kwargs={"k": 10})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
     
     # Initialize LLM
     llm = ChatGroq(
@@ -66,29 +66,35 @@ def initialize_rag():
     )
     
     # Create prompt template
-    system_prompt = """
-You are a helpful AI assistant. Use ONLY the provided context to answer.
+    template = """You are a helpful AI assistant. Use ONLY the provided context to answer.
 If the answer cannot be found in the context, say: "I don't know."
 
 Context:
 {context}
-"""
+
+Question: {question}
+
+Answer:"""
     
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{input}")
-    ])
+    prompt = ChatPromptTemplate.from_template(template)
     
-    # Build RAG chain
-    stuff_chain = create_stuff_documents_chain(llm, prompt)
-    rag_chain = create_retrieval_chain(retriever, stuff_chain)
+    # Build RAG chain using LCEL (LangChain Expression Language)
+    def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
     
-    return rag_chain
+    rag_chain = (
+        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+    
+    return rag_chain, retriever
 
 
 # Initialize RAG chain
 try:
-    rag_chain = initialize_rag()
+    rag_chain, retriever = initialize_rag()
 except Exception as e:
     st.error(f"❌ Failed to initialize RAG chain: {str(e)}")
     st.stop()
@@ -100,15 +106,18 @@ user_input = st.text_input("Enter your question:", key="user_question")
 if user_input:
     with st.spinner("Generating answer..."):
         try:
-            result = rag_chain.invoke({"input": user_input})
-            answer = result.get("answer", "I don't know.")
+            # Get answer from RAG chain
+            answer = rag_chain.invoke(user_input)
             
             st.subheader("📘 Answer")
             st.write(answer)
             
+            # Get retrieved documents for display
+            docs = retriever.get_relevant_documents(user_input)
+            
             # Debug / Retrieved context
             with st.expander("🔍 Retrieved Knowledge Chunks"):
-                for i, doc in enumerate(result.get("context", []), 1):
+                for i, doc in enumerate(docs, 1):
                     st.markdown(f"### Chunk {i}")
                     st.write(doc.page_content)
                     st.caption(f"Source: {doc.metadata.get('source', 'Unknown')}")
