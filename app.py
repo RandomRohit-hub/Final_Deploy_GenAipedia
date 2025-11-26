@@ -3,7 +3,7 @@ import os
 
 # -------------------- RAG Imports --------------------
 from pinecone import Pinecone  # NEW SDK
-from langchain_pinecone import PineconeVectorStore
+from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 
@@ -46,10 +46,14 @@ def initialize_rag():
         model_kwargs={"device": "cpu"}
     )
     
-    # Load Pinecone index
-    db = PineconeVectorStore.from_existing_index(
-        index_name=index_name,
-        embedding=embeddings
+    # Get Pinecone index
+    index = pc.Index(index_name)
+    
+    # Load Pinecone vector store
+    db = PineconeVectorStore(
+        index=index,
+        embedding=embeddings,
+        text_key="text"
     )
     
     retriever = db.as_retriever(search_kwargs={"k": 10})
