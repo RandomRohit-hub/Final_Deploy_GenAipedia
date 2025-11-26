@@ -1,8 +1,6 @@
 import streamlit as st
 import os
-
-# Pinecone
-from pinecone import Pinecone
+import pinecone
 
 # LangChain vectorstore
 from langchain_community.vectorstores import Pinecone as LangchainPinecone
@@ -50,31 +48,30 @@ def initialize_embeddings():
 @st.cache_resource
 def initialize_rag():
     try:
-        # Set Pinecone API key as environment variable for langchain-community
-        os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
+        # Initialize Pinecone with OLD SDK (v2.x)
+        pinecone.init(api_key=PINECONE_API_KEY, environment="gcp-starter")
         
-        # Initialize Pinecone client for verification
-        pc = Pinecone(api_key=PINECONE_API_KEY)
         index_name = "genativeai-encyclopedia"
         
         # Debug info
         st.sidebar.success("🔌 Pinecone Connected")
         try:
-            indexes = pc.list_indexes()
-            st.sidebar.write("📊 Available Indexes:", [idx.name for idx in indexes])
+            indexes = pinecone.list_indexes()
+            st.sidebar.write("📊 Available Indexes:", indexes)
         except:
             pass
+        
+        # Get the index using old SDK
+        index = pinecone.Index(index_name)
         
         # Initialize embeddings
         embeddings = initialize_embeddings()
         
-        # Create vector store directly from existing index
-        # This method uses the API key from environment variable
-        vectorstore = LangchainPinecone.from_existing_index(
-            index_name=index_name,
+        # Create vector store with the index object
+        vectorstore = LangchainPinecone(
+            index=index,
             embedding=embeddings,
-            text_key="text",
-            namespace=""  # Use default namespace or specify yours
+            text_key="text"
         )
         
         retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
