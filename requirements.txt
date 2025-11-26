@@ -1,7 +1,7 @@
 streamlit
 python-dotenv
 
-# LangChain ecosystem (latest stable 2024+)
+# LangChain
 langchain
 langchain-core
 langchain-community
@@ -9,8 +9,8 @@ langchain-pinecone
 langchain-huggingface
 langchain-groq
 
-# Pinecone new SDK
-pinecone-client
+# Pinecone (new official SDK)
+pinecone
 
 # Embeddings
 sentence-transformers
@@ -19,6 +19,5 @@ torch
 # Groq LLM API
 groq
 
-# Utilities
-tqdm
 requests
+tqdm
