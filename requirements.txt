@@ -3,12 +3,12 @@ python-dotenv
 
 pinecone-client<3.0.0
 
-langchain
-langchain-core
+langchain>=0.3.0
+langchain-core>=0.3.0
 langchain-community
 langchain-pinecone
-langchain-huggingface
 langchain-groq
+langchain-huggingface
 
 sentence-transformers
 torch
