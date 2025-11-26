@@ -1,7 +1,6 @@
 streamlit
 python-dotenv
 
-# Old Pinecone SDK (required for langchain)
 pinecone-client<3.0.0
 
 langchain
