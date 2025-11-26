@@ -46,8 +46,14 @@ def initialize_rag():
         model_kwargs={"device": "cpu"}
     )
     
-    # Get Pinecone index
-    index = pc.Index(index_name)
+    # Connect to Pinecone index using the client
+    # The Index is accessed directly from the Pinecone client instance
+    try:
+        index = pc.Index(index_name)
+    except Exception as e:
+        st.error(f"Error connecting to Pinecone index: {str(e)}")
+        st.info(f"Available indexes: {pc.list_indexes().names()}")
+        raise
     
     # Load Pinecone vector store using langchain_community
     vectorstore = LangchainPinecone(
