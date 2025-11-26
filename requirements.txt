@@ -9,8 +9,8 @@ sentence-transformers==2.6.1
 torch==2.1.2
 transformers==4.37.2
 huggingface-hub>=0.23.0
-tokenizers==0.15.2
-safetensors==0.4.2
+tokenizers>=0.19.1
+safetensors>=0.4.2
 numpy<2.0.0
 pydantic==2.6.4
 pydantic-core==2.16.3
